@@ -1,0 +1,38 @@
+﻿name: lumen_blend_camera
+description: 自动溶图相机 (LumenBlend) — 将二次元立绘以物理光影匹配与实时透视无缝融入现实环境的跨平台 iOS/Android 相机应用。
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.6.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  camera: ^0.11.0+2
+  sensors_plus: ^6.1.1
+  image: ^4.3.0
+  image_picker: ^1.1.2
+  path_provider: ^2.1.5
+  shared_preferences: ^2.3.3
+  http: ^1.2.2
+  uuid: ^4.5.1
+  gal: ^2.3.0
+  flutter_onnxruntime: ^1.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  shaders:
+    - shaders/harmonize.frag
+
+  assets:
+    - assets/samples/standees/
+    - assets/samples/scenes/
+

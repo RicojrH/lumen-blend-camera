@@ -8,7 +8,7 @@ on:
 jobs:
   build_ios_ipa:
     name: Build Unsigned iOS IPA on macOS Xcode
-    runs-on: macos-15
+    runs-on: macos-latest
 
     steps:
       - name: Checkout repository

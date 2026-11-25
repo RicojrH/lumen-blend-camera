@@ -64,7 +64,7 @@ class AppSettings {
         'Seamlessly harmonize the anime character into the real-world photograph. Preserve the exact anime character design, face, pose, and outfit, while accurately matching the scene lighting direction, color temperature, atmospheric haze, soft shadows on the ground, ambient bounce light, and realistic camera lens grain so it looks naturally photographed in this environment.',
     this.onnxModelPath = '',
     this.onnxInputSize = 1024,
-    this.maxExportDimension = 1920,
+    this.maxExportDimension = 2560,
   });
 
   String get effectiveEndpoint =>

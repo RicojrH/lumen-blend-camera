@@ -1,13 +1,46 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+/// Available perspective guide modes to match diverse real-world environments.
+enum PerspectiveMode {
+  onePointFloor,
+  twoPointCorner,
+  fourCornerPlane,
+  simpleHorizon,
+}
+
+extension PerspectiveModeLabel on PerspectiveMode {
+  String get label {
+    switch (this) {
+      case PerspectiveMode.onePointFloor:
+        return '一点地面';
+      case PerspectiveMode.twoPointCorner:
+        return '两点墙角';
+      case PerspectiveMode.fourCornerPlane:
+        return '四角贴面';
+      case PerspectiveMode.simpleHorizon:
+        return '水平参考';
+    }
+  }
+}
+
 /// Real-time 3D perspective state derived from device sensors or manual controls.
 class PerspectiveState {
+  /// Active perspective grid visualization & matching mode
+  final PerspectiveMode mode;
+
   /// Normalized horizon Y position in viewport (0.15 = looking down, 0.5 = level, 0.8 = looking up)
   final double horizonY;
 
   /// Normalized horizontal vanishing point X (0.0 .. 1.0)
   final double vanishingX;
+
+  /// Horizontal half-spread of the two vanishing points in twoPointCorner mode (0.20 .. 0.70)
+  final double twoPointSpread;
+
+  /// Normalized 4-corner quad `[topLeft, topRight, bottomRight, bottomLeft]` for fourCornerPlane mode
+  /// (lets user snap the grid directly onto any tabletop, tile floor, stair, or slanted surface!)
+  final List<Offset> quadCorners;
 
   /// Camera pitch angle in degrees (-60 looking down .. +45 looking up)
   final double pitchDeg;
@@ -24,9 +57,19 @@ class PerspectiveState {
   /// Whether ground grid overlay is visible in viewfinder
   final bool showGrid;
 
+  static const List<Offset> defaultQuadCorners = [
+    Offset(0.24, 0.56),
+    Offset(0.76, 0.56),
+    Offset(0.90, 0.88),
+    Offset(0.10, 0.88),
+  ];
+
   const PerspectiveState({
+    this.mode = PerspectiveMode.onePointFloor,
     this.horizonY = 0.44,
     this.vanishingX = 0.50,
+    this.twoPointSpread = 0.42,
+    this.quadCorners = defaultQuadCorners,
     this.pitchDeg = -8.0,
     this.rollDeg = 0.0,
     this.depthStrength = 0.85,
@@ -35,8 +78,11 @@ class PerspectiveState {
   });
 
   PerspectiveState copyWith({
+    PerspectiveMode? mode,
     double? horizonY,
     double? vanishingX,
+    double? twoPointSpread,
+    List<Offset>? quadCorners,
     double? pitchDeg,
     double? rollDeg,
     double? depthStrength,
@@ -44,8 +90,11 @@ class PerspectiveState {
     bool? showGrid,
   }) {
     return PerspectiveState(
+      mode: mode ?? this.mode,
       horizonY: horizonY ?? this.horizonY,
       vanishingX: vanishingX ?? this.vanishingX,
+      twoPointSpread: twoPointSpread ?? this.twoPointSpread,
+      quadCorners: quadCorners ?? this.quadCorners,
       pitchDeg: pitchDeg ?? this.pitchDeg,
       rollDeg: rollDeg ?? this.rollDeg,
       depthStrength: depthStrength ?? this.depthStrength,
@@ -55,17 +104,29 @@ class PerspectiveState {
   }
 
   /// Perspective scale factor for a standee anchored at normalized ground position `footY`.
-  /// Objects closer to horizon appear smaller; objects closer to bottom foreground appear larger.
+  /// In fourCornerPlane mode, interpolates scale smoothly between the quad's far edge & near edge!
   double scaleFactorAtY(double footY) {
+    if (mode == PerspectiveMode.fourCornerPlane && quadCorners.length == 4) {
+      final farY = (quadCorners[0].dy + quadCorners[1].dy) * 0.5;
+      final nearY = (quadCorners[2].dy + quadCorners[3].dy) * 0.5;
+      final farW = (quadCorners[1].dx - quadCorners[0].dx).abs().clamp(0.08, 1.0);
+      final nearW = (quadCorners[2].dx - quadCorners[3].dx).abs().clamp(0.12, 1.2);
+      final spanY = (nearY - farY).abs() < 0.04 ? 0.25 : (nearY - farY);
+      final t = ((footY - farY) / spanY).clamp(-0.2, 1.4);
+      final ratio = (farW / nearW).clamp(0.25, 1.0);
+      return (ratio + (1.0 - ratio) * t).clamp(0.25, 1.55);
+    }
     final safeHorizon = horizonY.clamp(0.10, 0.78);
     final depth = ((footY - safeHorizon) / (1.0 - safeHorizon)).clamp(0.12, 1.35);
-    // Perspective scaling follows linear distance from vanishing horizon
     return (0.28 + depth * 0.92).clamp(0.25, 1.45);
   }
 
   Map<String, dynamic> toJson() => {
+        'mode': mode.name,
         'horizonY': horizonY,
         'vanishingX': vanishingX,
+        'twoPointSpread': twoPointSpread,
+        'quadCorners': quadCorners.map((o) => [o.dx, o.dy]).toList(),
         'pitchDeg': pitchDeg,
         'rollDeg': rollDeg,
         'depthStrength': depthStrength,
@@ -74,9 +135,27 @@ class PerspectiveState {
       };
 
   factory PerspectiveState.fromJson(Map<String, dynamic> json) {
+    final modeName = json['mode'] as String? ?? 'onePointFloor';
+    final parsedMode = PerspectiveMode.values.firstWhere(
+      (e) => e.name == modeName,
+      orElse: () => PerspectiveMode.onePointFloor,
+    );
+    List<Offset> parsedQuad = defaultQuadCorners;
+    if (json['quadCorners'] is List && (json['quadCorners'] as List).length == 4) {
+      parsedQuad = (json['quadCorners'] as List).map((e) {
+        final pair = e as List;
+        return Offset(
+          (pair[0] as num).toDouble(),
+          (pair[1] as num).toDouble(),
+        );
+      }).toList();
+    }
     return PerspectiveState(
+      mode: parsedMode,
       horizonY: (json['horizonY'] as num?)?.toDouble() ?? 0.44,
       vanishingX: (json['vanishingX'] as num?)?.toDouble() ?? 0.50,
+      twoPointSpread: (json['twoPointSpread'] as num?)?.toDouble() ?? 0.42,
+      quadCorners: parsedQuad,
       pitchDeg: (json['pitchDeg'] as num?)?.toDouble() ?? -8.0,
       rollDeg: (json['rollDeg'] as num?)?.toDouble() ?? 0.0,
       depthStrength: (json['depthStrength'] as num?)?.toDouble() ?? 0.85,

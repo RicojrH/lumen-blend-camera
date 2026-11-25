@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/blend_recipe.dart';
 import '../models/sample_scene.dart';
 import '../models/standee_asset.dart';
 import '../services/lighting_probe_service.dart';
@@ -409,6 +410,41 @@ class _CameraBlendScreenState extends State<CameraBlendScreen>
     }
   }
 
+  void _restoreAutoHorizon() {
+    if (_ctrl.mockSceneMode) {
+      final def = _ctrl.activeSampleScene.defaultPerspective;
+      _ctrl.updatePerspective(
+        _ctrl.perspective.copyWith(
+          horizonY: def.horizonY,
+          vanishingX: def.vanishingX,
+          pitchDeg: def.pitchDeg,
+          rollDeg: 0.0,
+          quadCorners: PerspectiveState.defaultQuadCorners,
+          sensorSyncEnabled: true,
+        ),
+      );
+    } else {
+      _ctrl.updatePerspective(
+        _ctrl.perspective.copyWith(
+          vanishingX: 0.50,
+          rollDeg: 0.0,
+          quadCorners: PerspectiveState.defaultQuadCorners,
+          sensorSyncEnabled: true,
+        ),
+      );
+      _initSensors();
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          duration: Duration(seconds: 2),
+          content: Text('已恢复地平线自动识别'),
+        ),
+      );
+    }
+  }
+
   void _openGallery() {
     ScaffoldMessenger.of(context).clearSnackBars();
     Navigator.of(context).push(
@@ -527,6 +563,7 @@ class _CameraBlendScreenState extends State<CameraBlendScreen>
                     child: InteractiveHorizonOverlay(
                       perspective: _ctrl.perspective,
                       onChanged: _ctrl.updatePerspective,
+                      onRestoreAutoHorizon: _restoreAutoHorizon,
                       onActiveChanged: (active) {
                         if (mounted) {
                           setState(() => _isAdjustingHorizon = active);
@@ -603,7 +640,9 @@ class _CameraBlendScreenState extends State<CameraBlendScreen>
                       ],
                     ),
                     if (_showScenePicker && _ctrl.mockSceneMode)
-                      _buildMockScenePickerDrawer(),
+                      _buildMockScenePickerDrawer()
+                    else if (_ctrl.perspective.showGrid && !_showQuickLightPanel)
+                      _buildPerspectiveModeStrip(),
                   ],
                 ),
               ),
@@ -613,13 +652,13 @@ class _CameraBlendScreenState extends State<CameraBlendScreen>
           // 3. Right Side Quick Action Rail
           if (!_showScenePicker && !_showQuickLightPanel)
             Positioned(
-              right: 12,
-              top: MediaQuery.of(context).padding.top + 64,
+              right: 10,
+              top: MediaQuery.of(context).padding.top + 98,
               child: Column(
                 children: [
                   _SideToolButton(
                     icon: Icons.flip_rounded,
-                    label: '镜像',
+                    label: '左右翻转',
                     active: _ctrl.placement.flipX,
                     onTap: () => _ctrl.updatePlacement(
                       _ctrl.placement.copyWith(flipX: !_ctrl.placement.flipX),
@@ -628,7 +667,7 @@ class _CameraBlendScreenState extends State<CameraBlendScreen>
                   const SizedBox(height: 8),
                   _SideToolButton(
                     icon: Icons.straighten_rounded,
-                    label: '近大远小',
+                    label: '透视缩放',
                     active: _ctrl.placement.lockToPerspectiveScale,
                     onTap: () => _ctrl.updatePlacement(
                       _ctrl.placement.copyWith(
@@ -640,7 +679,7 @@ class _CameraBlendScreenState extends State<CameraBlendScreen>
                   const SizedBox(height: 8),
                   _SideToolButton(
                     icon: Icons.wb_sunny_outlined,
-                    label: '光影',
+                    label: '调光影',
                     active: _showQuickLightPanel,
                     onTap: () => setState(() {
                       _showQuickLightPanel = !_showQuickLightPanel;
@@ -649,17 +688,19 @@ class _CameraBlendScreenState extends State<CameraBlendScreen>
                   ),
                   const SizedBox(height: 8),
                   _SideToolButton(
+                    icon: Icons.my_location_rounded,
+                    label: '自动水平',
+                    active: _ctrl.perspective.sensorSyncEnabled,
+                    onTap: _restoreAutoHorizon,
+                  ),
+                  const SizedBox(height: 8),
+                  _SideToolButton(
                     icon: Icons.refresh_rounded,
-                    label: '复位',
+                    label: '恢复默认',
                     active: false,
                     onTap: () {
                       _ctrl.resetPlacement();
-                      _ctrl.updatePerspective(
-                        _ctrl.perspective.copyWith(
-                          rollDeg: 0.0,
-                          vanishingX: 0.50,
-                        ),
-                      );
+                      _restoreAutoHorizon();
                     },
                   ),
                 ],
@@ -1031,6 +1072,53 @@ class _CameraBlendScreenState extends State<CameraBlendScreen>
     );
   }
 
+  Widget _buildPerspectiveModeStrip() {
+    final activeMode = _ctrl.perspective.mode;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: PerspectiveMode.values.map((mode) {
+            final selected = activeMode == mode;
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: GestureDetector(
+                onTap: () => _ctrl.updatePerspective(
+                  _ctrl.perspective.copyWith(mode: mode),
+                ),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? AppTheme.accentCyan.withValues(alpha: 0.25)
+                        : const Color(0xB80D1119),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color:
+                          selected ? AppTheme.accentCyan : AppTheme.borderSubtle,
+                    ),
+                  ),
+                  child: Text(
+                    mode.label,
+                    style: TextStyle(
+                      color:
+                          selected ? AppTheme.accentCyan : AppTheme.textSecondary,
+                      fontSize: 10.5,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   Widget _buildQuickLightingPanel() {
     final l = _ctrl.lighting;
     final p = _ctrl.perspective;
@@ -1038,8 +1126,8 @@ class _CameraBlendScreenState extends State<CameraBlendScreen>
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
       decoration: BoxDecoration(
-        color: const Color(0xE810141D),
-        borderRadius: BorderRadius.circular(16),
+        color: const Color(0xF010141D),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppTheme.borderSubtle),
       ),
       child: Column(
@@ -1048,96 +1136,128 @@ class _CameraBlendScreenState extends State<CameraBlendScreen>
           Row(
             children: [
               const Text(
-                '光影与地平线精调',
+                '光影方向与画面微调',
                 style: TextStyle(
                   color: AppTheme.textPrimary,
-                  fontSize: 12,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               const Spacer(),
               GestureDetector(
                 onTap: () => setState(() => _showQuickLightPanel = false),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Icon(Icons.close_rounded,
-                      size: 17, color: AppTheme.textSecondary),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceElevated,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    '收起',
+                    style:
+                        TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
+          // Dedicated spacious 112x112 360° Light Compass row to eliminate misclicks!
           Row(
             children: [
-              Column(
-                children: [
-                  LightCompassDial(
-                    azimuthDeg: l.lightAzimuthDeg,
-                    size: 58,
-                    onChanged: (deg) => _ctrl.updateLighting(
-                      l.copyWith(lightAzimuthDeg: deg, autoMatchEnabled: false),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '360°光源 ${l.lightAzimuthDeg.round()}°',
-                    style: const TextStyle(
-                      color: AppTheme.accentAmber,
-                      fontSize: 9.5,
-                    ),
-                  ),
-                ],
+              LightCompassDial(
+                azimuthDeg: l.lightAzimuthDeg,
+                size: 112,
+                onChanged: (deg) => _ctrl.updateLighting(
+                  l.copyWith(lightAzimuthDeg: deg, autoMatchEnabled: false),
+                ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _MiniSlider(
-                      label: '色温 ${l.kelvin.round()}K',
-                      value: l.kelvin,
-                      min: 2700,
-                      max: 9200,
-                      onChanged: (v) => _ctrl.updateLighting(
-                        l.copyWith(kelvin: v, autoMatchEnabled: false),
+                    Text(
+                      '光源方向：${l.lightAzimuthDeg.round()}°',
+                      style: const TextStyle(
+                        color: AppTheme.accentAmber,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    _MiniSlider(
-                      label: '曝光 ${l.exposureEv.toStringAsFixed(2)}EV',
-                      value: l.exposureEv,
-                      min: -1.3,
-                      max: 1.0,
-                      onChanged: (v) => _ctrl.updateLighting(
-                        l.copyWith(exposureEv: v, autoMatchEnabled: false),
+                    const SizedBox(height: 4),
+                    const Text(
+                      '拖动大圆盘上的橙色太阳点，自由旋转 360° 受光面与地面影子方向。',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 11,
+                        height: 1.35,
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: () {
+                        _ctrl.updateLighting(l.copyWith(autoMatchEnabled: true));
+                        _ctrl.reProbeMockBackgroundAtAnchor();
+                      },
+                      icon: const Icon(Icons.auto_fix_high_rounded, size: 14),
+                      label: const Text('自动匹配环境光',
+                          style: TextStyle(fontSize: 11)),
                     ),
                   ],
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 6),
           _MiniSlider(
-            label: '地阴影 ${(l.shadowOpacity * 100).round()}%',
+            label: '画面冷暖 ${l.kelvin.round()}K',
+            value: l.kelvin,
+            min: 2700,
+            max: 9200,
+            onChanged: (v) => _ctrl.updateLighting(
+              l.copyWith(kelvin: v, autoMatchEnabled: false),
+            ),
+          ),
+          _MiniSlider(
+            label: '人物明暗 ${l.exposureEv >= 0 ? '+' : ''}${l.exposureEv.toStringAsFixed(1)}',
+            value: l.exposureEv,
+            min: -1.3,
+            max: 1.0,
+            onChanged: (v) => _ctrl.updateLighting(
+              l.copyWith(exposureEv: v, autoMatchEnabled: false),
+            ),
+          ),
+          _MiniSlider(
+            label: '影子深浅 ${(l.shadowOpacity * 100).round()}%',
             value: l.shadowOpacity,
             min: 0.0,
             max: 1.0,
             onChanged: (v) => _ctrl.updateLighting(l.copyWith(shadowOpacity: v)),
           ),
           _MiniSlider(
-            label: '光影融合度 ${(l.blendStrength * 100).round()}%',
+            label: '整体融合 ${(l.blendStrength * 100).round()}%',
             value: l.blendStrength,
             min: 0.0,
             max: 1.0,
             onChanged: (v) => _ctrl.updateLighting(l.copyWith(blendStrength: v)),
           ),
-          _MiniSlider(
-            label: '地平线倾角 ${p.rollDeg.toStringAsFixed(1)}°',
-            value: p.rollDeg,
-            min: -35.0,
-            max: 35.0,
-            onChanged: (v) => _ctrl.updatePerspective(
-              p.copyWith(rollDeg: v, sensorSyncEnabled: false),
+          if (p.mode == PerspectiveMode.twoPointCorner)
+            _MiniSlider(
+              label: '两点宽度 ${(p.twoPointSpread * 100).round()}%',
+              value: p.twoPointSpread,
+              min: 0.22,
+              max: 0.72,
+              onChanged: (v) => _ctrl.updatePerspective(
+                p.copyWith(twoPointSpread: v),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -1213,13 +1333,20 @@ class _CameraBlendScreenState extends State<CameraBlendScreen>
                     ),
                   ),
                   const SizedBox(width: 7),
-                  Text(
-                    s.name.split('·').first.trim(),
-                    style: TextStyle(
-                      color:
-                          selected ? AppTheme.accentAmber : AppTheme.textPrimary,
-                      fontSize: 12,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 68),
+                    child: Text(
+                      s.name.split('·').first.trim(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: selected
+                            ? AppTheme.accentAmber
+                            : AppTheme.textPrimary,
+                        fontSize: 12,
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],

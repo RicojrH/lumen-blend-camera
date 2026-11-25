@@ -574,7 +574,7 @@ class _MatteStudioScreenState extends State<MatteStudioScreen> {
 
                     if (_config.mode != MatteMode.onnxAi) ...[
                       _MatteSlider(
-                        label: '背景容差',
+                        label: '去背景范围',
                         valueText: _config.tolerance.round().toString(),
                         value: _config.tolerance,
                         min: 6,
@@ -585,7 +585,7 @@ class _MatteStudioScreenState extends State<MatteStudioScreen> {
                         },
                       ),
                       _MatteSlider(
-                        label: '边缘过渡柔和',
+                        label: '边缘平滑度',
                         valueText: _config.softness.round().toString(),
                         value: _config.softness,
                         min: 2,
@@ -597,7 +597,7 @@ class _MatteStudioScreenState extends State<MatteStudioScreen> {
                       ),
                     ],
                     _MatteSlider(
-                      label: '去白边溢色净化',
+                      label: '去白边杂色',
                       valueText: '${(_config.defringeStrength * 100).round()}%',
                       value: _config.defringeStrength,
                       min: 0.0,
@@ -609,7 +609,7 @@ class _MatteStudioScreenState extends State<MatteStudioScreen> {
                       },
                     ),
                     _MatteSlider(
-                      label: '边缘收缩 (防杂边)',
+                      label: '边缘向内收边',
                       valueText: '${_config.edgeShrink}px',
                       value: _config.edgeShrink.toDouble(),
                       min: 0,
@@ -622,7 +622,7 @@ class _MatteStudioScreenState extends State<MatteStudioScreen> {
                       },
                     ),
                     _MatteSlider(
-                      label: '透明羽化半径',
+                      label: '边缘柔化',
                       valueText: '${_config.featherRadius.toStringAsFixed(1)}px',
                       value: _config.featherRadius,
                       min: 0.0,

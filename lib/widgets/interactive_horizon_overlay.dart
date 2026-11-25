@@ -5,21 +5,26 @@ import '../models/blend_recipe.dart';
 import '../services/perspective_engine.dart';
 import '../theme/app_theme.dart';
 
-/// Foreground interactive Horizon Gizmo rendered ABOVE the standee so handles are
-/// never occluded by the character or right-side toolbar:
-/// - Drag center `VP` handle: move horizon height (`horizonY`) & vanishing point (`vanishingX`)
-/// - Drag Left or Right `⟳` wing handle: rotate horizon tilt (`rollDeg`, -38°..+38°)
-/// - Double-tap: reset tilt to 0.0° level
+/// Direct on-canvas interactive perspective gizmo:
+/// - In `onePointFloor` / `twoPointCorner` / `simpleHorizon`:
+///   - Drag center `↕` VP handle to adjust horizon height & vanishing X
+///   - Drag Left or Right orange `⟳` wing handles to rotate horizon tilt (`rollDeg`)
+///   - One-tap 「恢复自动」 pill appears whenever user has manually adjusted the horizon!
+/// - In `fourCornerPlane`:
+///   - Renders 4 large tactile corner handles directly on the canvas so users can snap the
+///     perspective plane onto any tabletop, tile floor, stair, or slanted wall!
 class InteractiveHorizonOverlay extends StatefulWidget {
   final PerspectiveState perspective;
   final ValueChanged<PerspectiveState> onChanged;
   final ValueChanged<bool>? onActiveChanged;
+  final VoidCallback? onRestoreAutoHorizon;
 
   const InteractiveHorizonOverlay({
     super.key,
     required this.perspective,
     required this.onChanged,
     this.onActiveChanged,
+    this.onRestoreAutoHorizon,
   });
 
   @override
@@ -118,10 +123,40 @@ class _InteractiveHorizonOverlayState extends State<InteractiveHorizonOverlay> {
   }
 
   void _onDoubleTap() {
+    if (widget.onRestoreAutoHorizon != null) {
+      widget.onRestoreAutoHorizon!();
+    } else {
+      widget.onChanged(
+        widget.perspective.copyWith(
+          rollDeg: 0.0,
+          vanishingX: 0.50,
+          sensorSyncEnabled: true,
+        ),
+      );
+    }
+  }
+
+  void _updateQuadCorner(int idx, Offset globalPos, Size size) {
+    final local = _globalToViewport(globalPos);
+    final nx = (local.dx / size.width).clamp(0.03, 0.97);
+    final ny = (local.dy / size.height).clamp(0.12, 0.96);
+    final next = List<Offset>.from(widget.perspective.quadCorners);
+    next[idx] = Offset(nx, ny);
+
+    // Derive horizonY & rollDeg smoothly from the quad's far edge so shadows & tilt stay aligned
+    final farY = ((next[0].dy + next[1].dy) * 0.5 - 0.14).clamp(0.12, 0.78);
+    final bottomAngleRad = math.atan2(
+      (next[2].dy - next[3].dy) * size.height,
+      (next[2].dx - next[3].dx) * size.width,
+    );
+    final rollDeg = (bottomAngleRad * 180.0 / math.pi).clamp(-35.0, 35.0);
+
     widget.onChanged(
       widget.perspective.copyWith(
-        rollDeg: 0.0,
-        vanishingX: 0.50,
+        quadCorners: next,
+        horizonY: farY,
+        pitchDeg: PerspectiveEngine.horizonYToPitchDeg(farY),
+        rollDeg: rollDeg,
         sensorSyncEnabled: false,
       ),
     );
@@ -136,16 +171,20 @@ class _InteractiveHorizonOverlayState extends State<InteractiveHorizonOverlay> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
+
+        if (widget.perspective.mode == PerspectiveMode.fourCornerPlane) {
+          return _buildQuadCornerHandles(size);
+        }
+
         final vx = widget.perspective.vanishingX.clamp(0.10, 0.90) * size.width;
         final hy = widget.perspective.horizonY.clamp(0.12, 0.82) * size.height;
         final stripWidth = size.width * 1.5;
-        const stripHeight = 46.0;
+        const stripHeight = 48.0;
         final rollRad = widget.perspective.rollDeg * math.pi / 180.0;
 
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            // Visual foreground handles painted cleanly above standee & left of right-rail
             Positioned.fill(
               child: IgnorePointer(
                 child: CustomPaint(
@@ -156,8 +195,6 @@ class _InteractiveHorizonOverlayState extends State<InteractiveHorizonOverlay> {
                 ),
               ),
             ),
-
-            // Hit-test strip strictly along the rotated horizon line
             Positioned(
               left: vx - stripWidth * 0.5,
               top: hy - stripHeight * 0.5,
@@ -180,9 +217,93 @@ class _InteractiveHorizonOverlayState extends State<InteractiveHorizonOverlay> {
                 ),
               ),
             ),
+
+            // One-tap "恢复自动地平线" pill whenever user manually overrode horizon!
+            if (!widget.perspective.sensorSyncEnabled)
+              Positioned(
+                left: (vx - 60).clamp(12.0, size.width - 134.0),
+                top: (hy - 56).clamp(62.0, size.height - 160.0),
+                child: GestureDetector(
+                  onTap: _onDoubleTap,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xE60D121C),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppTheme.accentMint.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.my_location_rounded,
+                          size: 13,
+                          color: AppTheme.accentMint,
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          '恢复自动地平线',
+                          style: TextStyle(
+                            color: AppTheme.accentMint,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildQuadCornerHandles(Size size) {
+    final corners = widget.perspective.quadCorners;
+    const labels = ['远左', '远右', '近右', '近左'];
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        for (int i = 0; i < 4; i++)
+          Positioned(
+            left: corners[i].dx * size.width - 22,
+            top: corners[i].dy * size.height - 22,
+            width: 44,
+            height: 44,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanStart: (_) => widget.onActiveChanged?.call(true),
+              onPanUpdate: (d) => _updateQuadCorner(i, d.globalPosition, size),
+              onPanEnd: (_) => widget.onActiveChanged?.call(false),
+              child: Center(
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: const Color(0xE00A0C10),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppTheme.accentAmber, width: 2),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    labels[i],
+                    style: const TextStyle(
+                      color: AppTheme.accentAmber,
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -215,10 +336,11 @@ class _HorizonHandlesPainter extends CustomPainter {
     canvas.rotate(perspective.rollDeg * math.pi / 180.0);
     canvas.translate(-vx, -hy);
 
-    // Subtle connecting rail between left and right rotation handles
     final leftDist = (w * 0.30).clamp(78.0, 140.0);
-    // Keep right wing clear of right-side quick toolbar (72px margin on right)
-    final rightDist = math.min((w * 0.23).clamp(64.0, 112.0), math.max(58.0, w - 78.0 - vx));
+    final rightDist = math.min(
+      (w * 0.23).clamp(64.0, 112.0),
+      math.max(58.0, w - 78.0 - vx),
+    );
 
     canvas.drawLine(
       Offset(vx - leftDist, hy),
@@ -228,18 +350,17 @@ class _HorizonHandlesPainter extends CustomPainter {
         ..strokeWidth = 1.4,
     );
 
-    // Center VP drag handle (moves horizon height & vanishing X)
+    // Center VP drag handle
     final vpCenter = Offset(vx, hy);
-    canvas.drawCircle(vpCenter, 13, Paint()..color = const Color(0xDC0A0C10));
+    canvas.drawCircle(vpCenter, 14, Paint()..color = const Color(0xDC0A0C10));
     canvas.drawCircle(
       vpCenter,
-      11.5,
+      12.5,
       Paint()
         ..color = vpColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.8,
     );
-    // Up/down chevron arrows inside VP handle
     final iconPaint = Paint()
       ..color = vpColor
       ..strokeWidth = 1.5
@@ -254,16 +375,16 @@ class _HorizonHandlesPainter extends CustomPainter {
     for (final gx in [vx - leftDist, vx + rightDist]) {
       if (gx < 18 || gx > w - 66) continue;
       final center = Offset(gx, hy);
-      canvas.drawCircle(center, 12, Paint()..color = const Color(0xE00A0C10));
+      canvas.drawCircle(center, 13, Paint()..color = const Color(0xE00A0C10));
       canvas.drawCircle(
         center,
-        10.5,
+        11.5,
         Paint()
           ..color = AppTheme.accentAmber
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.7,
       );
-      final arcRect = Rect.fromCircle(center: center, radius: 5.2);
+      final arcRect = Rect.fromCircle(center: center, radius: 5.5);
       final arcPaint = Paint()
         ..color = AppTheme.accentAmber
         ..style = PaintingStyle.stroke
@@ -273,11 +394,11 @@ class _HorizonHandlesPainter extends CustomPainter {
       canvas.drawArc(arcRect, math.pi * 0.35, math.pi * 0.85, false, arcPaint);
     }
 
-    // Compact pill badge right above center VP handle
     final rollSign = perspective.rollDeg >= 0 ? '+' : '';
+    final modeTag = perspective.sensorSyncEnabled ? '自动' : '手动';
     final tp = TextPainter(
       text: TextSpan(
-        text: '地平线 ↕移动 · ⟳旋转 $rollSign${perspective.rollDeg.toStringAsFixed(1)}°',
+        text: '拖动调高低 · 两侧转倾斜 ($modeTag $rollSign${perspective.rollDeg.toStringAsFixed(1)}°)',
         style: TextStyle(
           color: vpColor,
           fontSize: 9.8,

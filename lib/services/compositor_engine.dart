@@ -140,7 +140,7 @@ class CompositorEngine {
     if (encodeAsPng) {
       return Uint8List.fromList(img.encodePng(canvas, level: 4));
     }
-    return Uint8List.fromList(img.encodeJpg(canvas, quality: 94));
+    return Uint8List.fromList(img.encodeJpg(canvas, quality: 97));
   }
 
   /// Draws both:
@@ -353,17 +353,26 @@ class CompositorEngine {
     final blackLift = lighting.blackLift;
     final grain = lighting.filmGrain;
 
-    // Precompute alpha buffer for fast rim normal & edge mask detection
+    // Premultiplied bilinear sub-pixel sampling buffers eliminate staircase jaggies
+    // on rotated or sub-pixel-aligned anime lineart & silhouette edges!
+    final preR = Float32List(fgW * fgH);
+    final preG = Float32List(fgW * fgH);
+    final preB = Float32List(fgW * fgH);
     final alphaBuf = Float32List(fgW * fgH);
     for (int y = 0; y < fgH; y++) {
       for (int x = 0; x < fgW; x++) {
-        alphaBuf[y * fgW + x] = standee.getPixel(x, y).a / 255.0;
+        final p = standee.getPixel(x, y);
+        final a = p.a / 255.0;
+        final idx = y * fgW + x;
+        alphaBuf[idx] = a;
+        preR[idx] = (p.r / 255.0) * a;
+        preG[idx] = (p.g / 255.0) * a;
+        preB[idx] = (p.b / 255.0) * a;
       }
     }
 
     final stepProbe = math.max(2, (math.min(fgW, fgH) / 90).round());
 
-    // Compute rotated bounding box on canvas
     final diag = math.sqrt(fgW * fgW + fgH * fgH);
     final minX = hasRotation
         ? (anchorPxX - diag).floor().clamp(0, bgW - 1)
@@ -380,29 +389,66 @@ class CompositorEngine {
 
     for (int cy = minY; cy <= maxY; cy++) {
       for (int cx = minX; cx <= maxX; cx++) {
-        int fx, fy;
+        double fxF, fyF;
         if (!hasRotation) {
-          fx = cx - fgLeft;
-          fy = cy - fgTop;
+          fxF = (cx - fgLeft).toDouble();
+          fyF = (cy - fgTop).toDouble();
         } else {
-          // Rotate around foot anchor (anchorPxX, anchorPxY)
           final dx = cx - anchorPxX;
           final dy = cy - anchorPxY;
           final rx = dx * cosRot + dy * sinRot;
           final ry = -dx * sinRot + dy * cosRot;
-          fx = (rx + fgW * 0.5).round();
-          fy = (ry + fgH).round();
+          fxF = rx + fgW * 0.5;
+          fyF = ry + fgH;
         }
 
-        if (fx < 0 || fx >= fgW || fy < 0 || fy >= fgH) continue;
+        if (fxF < 0 || fxF >= fgW - 1 || fyF < 0 || fyF >= fgH - 1) continue;
 
-        final a = alphaBuf[fy * fgW + fx];
+        final x0 = fxF.floor();
+        final y0 = fyF.floor();
+        final tx = fxF - x0;
+        final ty = fyF - y0;
+        final invTx = 1.0 - tx;
+        final invTy = 1.0 - ty;
+
+        final i00 = y0 * fgW + x0;
+        final i10 = i00 + 1;
+        final i01 = i00 + fgW;
+        final i11 = i01 + 1;
+
+        final w00 = invTx * invTy;
+        final w10 = tx * invTy;
+        final w01 = invTx * ty;
+        final w11 = tx * ty;
+
+        final a = alphaBuf[i00] * w00 +
+            alphaBuf[i10] * w10 +
+            alphaBuf[i01] * w01 +
+            alphaBuf[i11] * w11;
         if (a <= 0.008) continue;
 
-        final fp = standee.getPixel(fx, fy);
-        final rawR = fp.r / 255.0;
-        final rawG = fp.g / 255.0;
-        final rawB = fp.b / 255.0;
+        final invA = 1.0 / a;
+        final rawR = ((preR[i00] * w00 +
+                    preR[i10] * w10 +
+                    preR[i01] * w01 +
+                    preR[i11] * w11) *
+                invA)
+            .clamp(0.0, 1.0);
+        final rawG = ((preG[i00] * w00 +
+                    preG[i10] * w10 +
+                    preG[i01] * w01 +
+                    preG[i11] * w11) *
+                invA)
+            .clamp(0.0, 1.0);
+        final rawB = ((preB[i00] * w00 +
+                    preB[i10] * w10 +
+                    preB[i01] * w01 +
+                    preB[i11] * w11) *
+                invA)
+            .clamp(0.0, 1.0);
+
+        final fx = x0;
+        final fy = y0;
 
         double r = rawR * evGain * wb[0];
         double g = rawG * evGain * wb[1];
@@ -540,9 +586,11 @@ class CompositorEngine {
     final longest = math.max(src.width, src.height);
     if (longest <= maxDim) return src.clone();
     if (src.width >= src.height) {
-      return img.copyResize(src, width: maxDim, interpolation: img.Interpolation.linear);
+      return img.copyResize(src,
+          width: maxDim, interpolation: img.Interpolation.cubic);
     } else {
-      return img.copyResize(src, height: maxDim, interpolation: img.Interpolation.linear);
+      return img.copyResize(src,
+          height: maxDim, interpolation: img.Interpolation.cubic);
     }
   }
 

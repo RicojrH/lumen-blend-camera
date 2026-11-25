@@ -46,7 +46,14 @@ class _AssetLibraryScreenState extends State<AssetLibraryScreen> {
       final picked = await _picker.pickImage(source: ImageSource.gallery);
       if (picked == null) return;
       final bytes = await picked.readAsBytes();
-      final baseName = picked.name.replaceAll(RegExp(r'\.[^.]+$'), '');
+      final nextIndex = _ctrl.standees.length + 1;
+      final rawName = picked.name.replaceAll(RegExp(r'\.[^.]+$'), '').trim();
+      final looksAutoHash = rawName.isEmpty ||
+          rawName.length > 8 ||
+          RegExp(r'^[a-zA-Z0-9_\-]{8,}$').hasMatch(rawName) ||
+          rawName.toLowerCase().contains('image_picker') ||
+          rawName.toLowerCase().startsWith('img_');
+      final shortName = looksAutoHash ? '立绘 #$nextIndex' : rawName;
       if (!mounted) return;
 
       final saved = await Navigator.of(context).push<StandeeAsset>(
@@ -54,7 +61,7 @@ class _AssetLibraryScreenState extends State<AssetLibraryScreen> {
           builder: (_) => MatteStudioScreen(
             controller: _ctrl,
             sourceBytes: bytes,
-            initialName: baseName.isEmpty ? '新二次元立绘' : baseName,
+            initialName: shortName,
           ),
         ),
       );

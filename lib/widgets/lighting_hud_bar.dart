@@ -118,8 +118,8 @@ class LightingHudBar extends StatelessWidget {
   }
 }
 
-/// Interactive circular Light Direction Compass where users can drag the sun dot
-/// around 360 degrees to steer directional key/rim lighting and cast shadow angle.
+/// Spacious, ergonomic 360° circular Light Direction Compass with large thumb handle
+/// so users can smoothly steer directional key/rim lighting and cast shadow angle without misclicks.
 class LightCompassDial extends StatelessWidget {
   final double azimuthDeg;
   final double size;
@@ -129,25 +129,27 @@ class LightCompassDial extends StatelessWidget {
     super.key,
     required this.azimuthDeg,
     required this.onChanged,
-    this.size = 64,
+    this.size = 112,
   });
 
   void _updateFromLocal(Offset local) {
     final center = Offset(size * 0.5, size * 0.5);
     final delta = local - center;
-    if (delta.distance < 4) return;
-    final deg = (math.atan2(delta.dy, delta.dx) * 180.0 / math.pi + 360.0) % 360.0;
+    if (delta.distance < 6) return;
+    final deg =
+        (math.atan2(delta.dy, delta.dx) * 180.0 / math.pi + 360.0) % 360.0;
     onChanged(deg);
   }
 
   @override
   Widget build(BuildContext context) {
     final rad = azimuthDeg * math.pi / 180.0;
-    final radius = size * 0.36;
+    final radius = size * 0.35;
     final sunX = size * 0.5 + math.cos(rad) * radius;
     final sunY = size * 0.5 + math.sin(rad) * radius;
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onPanStart: (d) => _updateFromLocal(d.localPosition),
       onPanUpdate: (d) => _updateFromLocal(d.localPosition),
       onTapDown: (d) => _updateFromLocal(d.localPosition),
@@ -177,52 +179,93 @@ class _CompassPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width * 0.5, size.height * 0.5);
-    final radius = size.width * 0.36;
+    final outerR = size.width * 0.47;
+    final trackR = size.width * 0.35;
 
-    // Dial background
+    // Dial base & subtle border
+    canvas.drawCircle(center, outerR, Paint()..color = const Color(0xE00D1119));
     canvas.drawCircle(
       center,
-      size.width * 0.46,
-      Paint()..color = const Color(0xCC0D1119),
-    );
-    canvas.drawCircle(
-      center,
-      radius,
+      outerR,
       Paint()
         ..color = AppTheme.borderSubtle
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2,
     );
 
-    // Shadow opposite ray
-    final opposite = center - (sunPos - center) * 0.65;
+    // Track ring
+    canvas.drawCircle(
+      center,
+      trackR,
+      Paint()
+        ..color = AppTheme.borderSubtle.withValues(alpha: 0.9)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0,
+    );
+
+    // Cardinal direction labels (上 / 下 / 左 / 右)
+    final labelStyle = const TextStyle(
+      color: AppTheme.textMuted,
+      fontSize: 9.5,
+      fontWeight: FontWeight.w600,
+    );
+    void drawDirLabel(String text, Offset pos) {
+      final tp = TextPainter(
+        text: TextSpan(text: text, style: labelStyle),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(pos.dx - tp.width * 0.5, pos.dy - tp.height * 0.5));
+    }
+
+    drawDirLabel('上', Offset(center.dx, center.dy - outerR + 9));
+    drawDirLabel('下', Offset(center.dx, center.dy + outerR - 9));
+    drawDirLabel('左', Offset(center.dx - outerR + 9, center.dy));
+    drawDirLabel('右', Offset(center.dx + outerR - 9, center.dy));
+
+    // Shadow opposite ray (dashed / cool gray)
+    final opposite = center - (sunPos - center) * 0.72;
     canvas.drawLine(
       center,
       opposite,
       Paint()
-        ..color = AppTheme.textMuted.withValues(alpha: 0.6)
-        ..strokeWidth = 1.5,
+        ..color = AppTheme.accentCyan.withValues(alpha: 0.55)
+        ..strokeWidth = 2.0
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawCircle(
+      opposite,
+      3.5,
+      Paint()..color = AppTheme.accentCyan.withValues(alpha: 0.75),
     );
 
-    // Sun ray
+    // Sun incoming light ray
     canvas.drawLine(
       center,
       sunPos,
       Paint()
         ..color = AppTheme.accentAmber
-        ..strokeWidth = 1.6,
+        ..strokeWidth = 2.4
+        ..strokeCap = StrokeCap.round,
     );
 
-    // Center character dot
-    canvas.drawCircle(center, 3.2, Paint()..color = AppTheme.accentCyan);
+    // Center character marker
+    canvas.drawCircle(center, 4.5, Paint()..color = Colors.white70);
 
-    // Draggable sun handle
+    // Large ergonomic glowing sun handle
     canvas.drawCircle(
       sunPos,
-      7.0,
-      Paint()..color = AppTheme.accentAmber.withValues(alpha: 0.28),
+      14.0,
+      Paint()..color = AppTheme.accentAmber.withValues(alpha: 0.24),
     );
-    canvas.drawCircle(sunPos, 4.5, Paint()..color = AppTheme.accentAmber);
+    canvas.drawCircle(sunPos, 9.0, Paint()..color = AppTheme.accentAmber);
+    canvas.drawCircle(
+      sunPos,
+      9.0,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6,
+    );
   }
 
   @override

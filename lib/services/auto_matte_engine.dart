@@ -18,13 +18,13 @@ extension MatteModeInfo on MatteMode {
   String get label {
     switch (this) {
       case MatteMode.animeLineAware:
-        return '二次元护线';
+        return '白底/浅底(护白衣)';
       case MatteMode.smartBorderFlood:
-        return '边缘智能抠';
+        return '纯色/渐变背景';
       case MatteMode.chromaKey:
-        return '吸色去背';
+        return '点击吸色去背';
       case MatteMode.onnxAi:
-        return '端侧 ONNX AI';
+        return 'AI 智能抠图';
     }
   }
 

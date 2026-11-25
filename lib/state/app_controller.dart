@@ -118,7 +118,9 @@ class AppController extends ChangeNotifier {
     try {
       final bytes = await storage.blobStore.readBytes(path);
       if (bytes == null) return null;
-      final codec = await ui.instantiateImageCodec(bytes);
+      // Decode a crisp GPU preview mip (max 840px tall) so 4K user-imported standees
+      // stay buttery 60fps during pinch/scale/rotate; full-res bytes are still used on export!
+      final codec = await ui.instantiateImageCodec(bytes, targetHeight: 840);
       final frame = await codec.getNextFrame();
       _uiImageCache[path] = frame.image;
       return frame.image;

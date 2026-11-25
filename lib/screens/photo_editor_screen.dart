@@ -485,21 +485,30 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           children: [
             LightCompassDial(
               azimuthDeg: l.lightAzimuthDeg,
-              size: 58,
+              size: 108,
               onChanged: (deg) => _updateRecipe(
                 _recipe.copyWith(lighting: l.copyWith(lightAzimuthDeg: deg)),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '主光源方向：${l.lightAzimuthDeg.round()}°（拖动圆盘旋转光影与投影）',
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11.5),
+                    '光源方向：${l.lightAzimuthDeg.round()}°',
+                    style: const TextStyle(
+                      color: AppTheme.accentAmber,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 3),
+                  const Text(
+                    '拖动圆盘太阳点，自由调整受光面和影子投射方向',
+                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
                   OutlinedButton.icon(
                     onPressed: _reProbeLightingFromBackground,
                     style: OutlinedButton.styleFrom(
@@ -509,7 +518,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
                     icon: const Icon(Icons.colorize_rounded,
                         size: 15, color: AppTheme.accentAmber),
                     label: const Text(
-                      '一键重新采样当前站位环境光',
+                      '一键自动匹配环境光',
                       style: TextStyle(fontSize: 11.5, color: AppTheme.accentAmber),
                     ),
                   ),
@@ -518,9 +527,9 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         _ParamSlider(
-          label: '色温 Kelvin',
+          label: '画面冷暖 (暖↔冷)',
           valueText: '${l.kelvin.round()}K',
           value: l.kelvin,
           min: 2600,
@@ -528,7 +537,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           onChanged: (v) => _updateRecipe(_recipe.copyWith(lighting: l.copyWith(kelvin: v))),
         ),
         _ParamSlider(
-          label: '曝光匹配 EV',
+          label: '人物明暗 (暗↔亮)',
           valueText: '${l.exposureEv >= 0 ? '+' : ''}${l.exposureEv.toStringAsFixed(2)}',
           value: l.exposureEv,
           min: -1.4,
@@ -536,7 +545,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           onChanged: (v) => _updateRecipe(_recipe.copyWith(lighting: l.copyWith(exposureEv: v))),
         ),
         _ParamSlider(
-          label: '对比度',
+          label: '明暗反差',
           valueText: l.contrast.toStringAsFixed(2),
           value: l.contrast,
           min: 0.65,
@@ -544,7 +553,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           onChanged: (v) => _updateRecipe(_recipe.copyWith(lighting: l.copyWith(contrast: v))),
         ),
         _ParamSlider(
-          label: '饱和度匹配',
+          label: '色彩鲜艳度',
           valueText: '${(l.saturation * 100).round()}%',
           value: l.saturation,
           min: 0.45,
@@ -552,7 +561,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           onChanged: (v) => _updateRecipe(_recipe.copyWith(lighting: l.copyWith(saturation: v))),
         ),
         _ParamSlider(
-          label: '暗部空气感抬升',
+          label: '暗部柔和 (去死黑)',
           valueText: '${(l.blackLift * 100).round()}%',
           value: l.blackLift,
           min: 0.0,
@@ -560,7 +569,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           onChanged: (v) => _updateRecipe(_recipe.copyWith(lighting: l.copyWith(blackLift: v))),
         ),
         _ParamSlider(
-          label: '方向高光 / 轮廓光',
+          label: '侧边受光强度',
           valueText: '${(l.directionalStrength * 100).round()}%',
           value: l.directionalStrength,
           min: 0.0,
@@ -570,7 +579,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           ),
         ),
         _ParamSlider(
-          label: '地面环境反光',
+          label: '环境反光染色',
           valueText: '${(l.ambientStrength * 100).round()}%',
           value: l.ambientStrength,
           min: 0.0,
@@ -580,7 +589,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           ),
         ),
         _ParamSlider(
-          label: '光学边缘溢光 (Light Wrap)',
+          label: '边缘融光 (去生硬)',
           valueText: '${(l.lightWrap * 100).round()}%',
           value: l.lightWrap,
           min: 0.0,
@@ -588,7 +597,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           onChanged: (v) => _updateRecipe(_recipe.copyWith(lighting: l.copyWith(lightWrap: v))),
         ),
         _ParamSlider(
-          label: '总溶图融合度',
+          label: '整体融合强度',
           valueText: '${(l.blendStrength * 100).round()}%',
           value: l.blendStrength,
           min: 0.0,
@@ -605,7 +614,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       children: [
         _ParamSlider(
-          label: '脚底 AO & 投影浓度',
+          label: '影子深浅',
           valueText: '${(l.shadowOpacity * 100).round()}%',
           value: l.shadowOpacity,
           min: 0.0,
@@ -613,7 +622,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           onChanged: (v) => _updateRecipe(_recipe.copyWith(lighting: l.copyWith(shadowOpacity: v))),
         ),
         _ParamSlider(
-          label: '投影柔和羽化度',
+          label: '影子虚化程度',
           valueText: '${(l.shadowSoftness * 100).round()}%',
           value: l.shadowSoftness,
           min: 0.05,
@@ -621,7 +630,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           onChanged: (v) => _updateRecipe(_recipe.copyWith(lighting: l.copyWith(shadowSoftness: v))),
         ),
         _ParamSlider(
-          label: '太阳/光源仰角（决定影长）',
+          label: '影子长短 (光源高低)',
           valueText: '${l.lightElevationDeg.round()}°',
           value: l.lightElevationDeg,
           min: 12,
@@ -631,7 +640,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           ),
         ),
         _ParamSlider(
-          label: '镜头景深柔化 (DOF)',
+          label: '人物虚化 (匹配景深)',
           valueText: '${l.dofBlur.toStringAsFixed(1)}px',
           value: l.dofBlur,
           min: 0.0,
@@ -639,7 +648,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           onChanged: (v) => _updateRecipe(_recipe.copyWith(lighting: l.copyWith(dofBlur: v))),
         ),
         _ParamSlider(
-          label: 'CMOS 相机微噪点匹配',
+          label: '照片颗粒感',
           valueText: '${(l.filmGrain * 100).round()}%',
           value: l.filmGrain,
           min: 0.0,
@@ -703,12 +712,19 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        s.name.split('·').first.trim(),
-                        style: TextStyle(
-                          color: selected ? AppTheme.accentAmber : AppTheme.textPrimary,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 74),
+                        child: Text(
+                          s.name.split('·').first.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: selected
+                                ? AppTheme.accentAmber
+                                : AppTheme.textPrimary,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
@@ -722,13 +738,13 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
         Row(
           children: [
             FilterChip(
-              label: const Text('透视参考网格'),
+              label: const Text('透视网格'),
               selected: _showGrid,
               onSelected: (v) => setState(() => _showGrid = v),
             ),
             const SizedBox(width: 8),
             FilterChip(
-              label: const Text('水平镜像'),
+              label: const Text('左右翻转'),
               selected: pl.flipX,
               onSelected: (v) => _updateRecipe(
                 _recipe.copyWith(placement: pl.copyWith(flipX: v)),
@@ -742,8 +758,24 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
             ),
           ],
         ),
+        if (_showGrid)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 4),
+            child: Wrap(
+              spacing: 6,
+              children: PerspectiveMode.values.map((m) {
+                return ChoiceChip(
+                  label: Text(m.label),
+                  selected: p.mode == m,
+                  onSelected: (_) => _updateRecipe(
+                    _recipe.copyWith(perspective: p.copyWith(mode: m)),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
         _ParamSlider(
-          label: '透视地平线高度',
+          label: '地平线高低',
           valueText: '${(p.horizonY * 100).round()}%',
           value: p.horizonY,
           min: 0.14,
@@ -758,7 +790,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           ),
         ),
         _ParamSlider(
-          label: '地平线旋转倾角',
+          label: '地平线倾斜角度',
           valueText: '${p.rollDeg.toStringAsFixed(1)}°',
           value: p.rollDeg,
           min: -35.0,

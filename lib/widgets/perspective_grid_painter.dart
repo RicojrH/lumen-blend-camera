@@ -5,8 +5,11 @@ import '../models/blend_recipe.dart';
 import '../services/perspective_engine.dart';
 import '../theme/app_theme.dart';
 
-/// Draws the real-time AR-style 3D perspective floor grid, rotated horizon line around
-/// `(vanishingX, horizonY)`, interactive grip markers, and 360° shadow ray anchor ring.
+/// Multi-mode 3D perspective floor/surface guide painter:
+/// - `onePointFloor`: 1-point perspective street/corridor floor grid
+/// - `twoPointCorner`: 2-point architectural street-corner / indoor room floor grid
+/// - `fourCornerPlane`: Free 4-corner quad mesh that snaps onto tabletops, tiles, or stairs
+/// - `simpleHorizon`: Clean minimalist horizon & rule-of-thirds reference lines
 class PerspectiveGridPainter extends CustomPainter {
   final PerspectiveState perspective;
   final PlacementTransform placement;
@@ -32,15 +35,29 @@ class PerspectiveGridPainter extends CustomPainter {
     final anchorY = placement.anchorY * h;
 
     if (perspective.showGrid) {
-      canvas.save();
-      // Pivot horizon & entire ground perspective grid around the vanishing point!
-      canvas.translate(vanishPxX, horizonPxY);
-      canvas.rotate(perspective.rollDeg * math.pi / 180.0);
-      canvas.translate(-vanishPxX, -horizonPxY);
-
-      _drawGroundPerspectiveGrid(canvas, w, h, vanishPxX, horizonPxY);
-      _drawHorizonAndGrips(canvas, w, vanishPxX, horizonPxY);
-      canvas.restore();
+      switch (perspective.mode) {
+        case PerspectiveMode.onePointFloor:
+          _paintRotated(canvas, vanishPxX, horizonPxY, () {
+            _drawOnePointGrid(canvas, w, h, vanishPxX, horizonPxY);
+            _drawHorizonLine(canvas, w, vanishPxX, horizonPxY);
+          });
+          break;
+        case PerspectiveMode.twoPointCorner:
+          _paintRotated(canvas, vanishPxX, horizonPxY, () {
+            _drawTwoPointGrid(canvas, w, h, vanishPxX, horizonPxY);
+            _drawHorizonLine(canvas, w, vanishPxX, horizonPxY);
+          });
+          break;
+        case PerspectiveMode.fourCornerPlane:
+          _drawFourCornerQuad(canvas, size);
+          break;
+        case PerspectiveMode.simpleHorizon:
+          _paintRotated(canvas, vanishPxX, horizonPxY, () {
+            _drawRuleOfThirds(canvas, w, h);
+            _drawHorizonLine(canvas, w, vanishPxX, horizonPxY);
+          });
+          break;
+      }
     }
 
     if (perspective.showGrid || highlightPlacement) {
@@ -48,7 +65,16 @@ class PerspectiveGridPainter extends CustomPainter {
     }
   }
 
-  void _drawGroundPerspectiveGrid(
+  void _paintRotated(Canvas canvas, double vx, double hy, VoidCallback drawFn) {
+    canvas.save();
+    canvas.translate(vx, hy);
+    canvas.rotate(perspective.rollDeg * math.pi / 180.0);
+    canvas.translate(-vx, -hy);
+    drawFn();
+    canvas.restore();
+  }
+
+  void _drawOnePointGrid(
     Canvas canvas,
     double w,
     double h,
@@ -97,7 +123,104 @@ class PerspectiveGridPainter extends CustomPainter {
     }
   }
 
-  void _drawHorizonAndGrips(Canvas canvas, double w, double vx, double hy) {
+  /// Two-point architectural perspective (left VP1 & right VP2 on the horizon line),
+  /// ideal for room corners, street intersections, and angled cafe floors.
+  void _drawTwoPointGrid(
+    Canvas canvas,
+    double w,
+    double h,
+    double vx,
+    double hy,
+  ) {
+    final spreadPx = w * perspective.twoPointSpread.clamp(0.22, 0.75);
+    final vpLeft = Offset(vx - spreadPx, hy);
+    final vpRight = Offset(vx + spreadPx, hy);
+    final floorHeight = math.max(80.0, h - hy + w * 0.3);
+
+    final paintL = Paint()
+      ..color = AppTheme.accentCyan.withValues(alpha: 0.24)
+      ..strokeWidth = 0.9;
+    final paintR = Paint()
+      ..color = AppTheme.accentMint.withValues(alpha: 0.22)
+      ..strokeWidth = 0.9;
+
+    const lineCount = 10;
+    for (int i = 1; i <= lineCount; i++) {
+      final frac = i / lineCount;
+      final yTarget = hy + math.pow(frac, 1.65) * floorHeight;
+      // Rays fanning downward from Left VP toward right floor edge
+      canvas.drawLine(vpLeft, Offset(w * 1.35, yTarget), paintL);
+      // Rays fanning downward from Right VP toward left floor edge
+      canvas.drawLine(vpRight, Offset(-w * 0.35, yTarget), paintR);
+    }
+
+    // Subtle vertical corner plumb line at center vanishingX
+    canvas.drawLine(
+      Offset(vx, hy - h * 0.25),
+      Offset(vx, h),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.18)
+        ..strokeWidth = 0.9,
+    );
+  }
+
+  /// Free 4-corner bilinear perspective quad for tabletops, floor tiles, or stairs.
+  void _drawFourCornerQuad(Canvas canvas, Size size) {
+    if (perspective.quadCorners.length != 4) return;
+    final pts = perspective.quadCorners
+        .map((c) => Offset(c.dx * size.width, c.dy * size.height))
+        .toList();
+    final tl = pts[0];
+    final tr = pts[1];
+    final br = pts[2];
+    final bl = pts[3];
+
+    final path = Path()
+      ..moveTo(tl.dx, tl.dy)
+      ..lineTo(tr.dx, tr.dy)
+      ..lineTo(br.dx, br.dy)
+      ..lineTo(bl.dx, bl.dy)
+      ..close();
+
+    canvas.drawPath(
+      path,
+      Paint()..color = AppTheme.accentCyan.withValues(alpha: 0.10),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = (highlightHorizon ? AppTheme.accentAmber : AppTheme.accentCyan)
+            .withValues(alpha: 0.85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6,
+    );
+
+    // Subdivide quad into 6x6 perspective surface grid
+    final gridPaint = Paint()
+      ..color = AppTheme.accentCyan.withValues(alpha: 0.30)
+      ..strokeWidth = 0.85;
+    const divs = 6;
+    for (int i = 1; i < divs; i++) {
+      final t = i / divs;
+      final topPt = Offset.lerp(tl, tr, t)!;
+      final botPt = Offset.lerp(bl, br, t)!;
+      canvas.drawLine(topPt, botPt, gridPaint);
+
+      final leftPt = Offset.lerp(tl, bl, t)!;
+      final rightPt = Offset.lerp(tr, br, t)!;
+      canvas.drawLine(leftPt, rightPt, gridPaint);
+    }
+  }
+
+  void _drawRuleOfThirds(Canvas canvas, double w, double h) {
+    final p = Paint()
+      ..color = Colors.white.withValues(alpha: 0.14)
+      ..strokeWidth = 0.8;
+    canvas.drawLine(Offset(w / 3, 0), Offset(w / 3, h), p);
+    canvas.drawLine(Offset(w * 2 / 3, 0), Offset(w * 2 / 3, h), p);
+  }
+
+  void _drawHorizonLine(Canvas canvas, double w, double vx, double hy) {
     final isLevel = perspective.rollDeg.abs() < 1.2;
     final baseColor = highlightHorizon
         ? AppTheme.accentAmber
@@ -110,7 +233,6 @@ class PerspectiveGridPainter extends CustomPainter {
       ..color = lineColor
       ..strokeWidth = highlightHorizon ? 1.8 : 1.25;
 
-    // Dashed horizon reference line on the floor plane (interactive handles are rendered in foreground by InteractiveHorizonOverlay)
     const dashW = 9.0;
     const gapW = 5.0;
     double x = -w * 0.35;
@@ -157,7 +279,6 @@ class PerspectiveGridPainter extends CustomPainter {
     );
     canvas.restore();
 
-    // True 360° directional shadow preview ray matching computeShadowBasis
     final basis = PerspectiveEngine.computeShadowBasis(
       lighting: lighting,
       perspective: perspective,
@@ -179,31 +300,6 @@ class PerspectiveGridPainter extends CustomPainter {
       shadowTip,
       2.8,
       Paint()..color = AppTheme.accentAmber.withValues(alpha: 0.85),
-    );
-
-    final distMeters = PerspectiveEngine.estimateDistanceMeters(
-      placement.anchorY,
-      perspective.horizonY,
-    );
-    final label = TextPainter(
-      text: TextSpan(
-        text: '站位 ≈ ${distMeters.toStringAsFixed(1)}m',
-        style: TextStyle(
-          color: ringColor,
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          shadows: const [Shadow(color: Colors.black, blurRadius: 4)],
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-
-    label.paint(
-      canvas,
-      Offset(
-        (ax - label.width * 0.5).clamp(8.0, size.width - label.width - 8.0),
-        (ay + ry + 4).clamp(8.0, size.height - 20.0),
-      ),
     );
   }
 

@@ -26,10 +26,6 @@ jobs:
       - name: Run unit tests
         run: flutter test
 
-      - name: Install CocoaPods dependencies
-        working-directory: ios
-        run: pod install --repo-update
-
       - name: Build iOS Release (.app without codesign for Sideloadly / AltStore / 爱思助手)
         run: flutter build ios --release --no-codesign
 
